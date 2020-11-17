@@ -1,0 +1,193 @@
+model "SantasSledges_Master"
+
+(!
+  Master file for the 
+  
+  Kaggle Santa Rideshare Optimization Challenge
+  Capicitated Vehicle Routing Problem (a twist of traveling salesman problem)
+  Given a list of gifts, weights, and their locations, deliver them in sleighs with a weight limit
+  All sleighs start from north pole, then head to each gift in the order that a user gives, and then head back to north pole
+  Sleighs have a base weight
+  "Weighted distance" = distance traveled * weights carried for that segment
+  Goal: minimize the total weighted distance traveled
+
+  This model uses R to separate the problem to small instances, where the exact MIP formulation
+    small enough to be solved quickly, then assembles the results to a single submission. 
+!)
+
+uses "mmxprs", "mmsheet", "mmjobs"
+uses "r"
+
+parameters
+  NUMPAR = 8	
+  NUMCLUSTERS = 5000
+  SUBTIME = 30	
+end-parameters
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!		
+! Data set up
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+declarations 
+  ! Input datafile contents
+  GiftIDs  : set of integer
+  Latitude : array(GiftIDs) of real
+  Longitude: array(GiftIDs) of real
+  Weight   : array(GiftIDs) of real 
+  
+  ! Raw cluster data from R
+  clustering:array(set of integer) of integer
+  
+  ! Gathered up clasters
+  Clusters:set of integer
+  ClusterMembers:array(Clusters) of set of integer
+end-declarations
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Create clustering from R
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+! Read data from csv file
+initializations from "mmsheet.csv:gifts.csv"
+  [Latitude,Longitude,Weight] as "[A2:D100001](#1,#2,#3,#4)"
+end-initializations
+Rset('Latitude',Latitude) 
+Rset('Longitude',Longitude)
+Reval("d <- cbind(Latitude, Longitude)")
+Rprint("k <- kmeans(d,"+NUMCLUSTERS+")")
+Rgetarr('k$cluster',clustering)
+
+! Gather up clasters
+forall (g in GiftIDs) do
+  !  R integer indices (1 to n) are used
+  ClusterMembers(clustering(g)) += {g}   
+end-do
+
+! Create cluster files
+forall (c in Clusters) do
+ fopen("gift_cluster_"+c+".dat", F_OUTPUT)
+ writeln("GiftId,Latitude,Longitude,Weight")
+ forall (g in ClusterMembers(c)) do
+   writeln(g,",",Latitude(g),",", Longitude(g),",", Weight(g))
+ end-do
+ fclose(F_OUTPUT)
+end-do 
+
+writeln
+writeln
+writeln("Clustering done.");
+writeln
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Solve for the clusters in parallel 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+declarations
+  RM = 1..NUMPAR                   ! Model indices
+  JOBS = 1..NUMCLUSTERS            ! Job (instance) indices
+  modPar: array(RM) of Model       ! Models
+  jobid: array(set of integer) of integer  ! Job index for model UIDs
+  JobList: list of integer         ! List of jobs
+  JobsRun: set of integer          ! Set of finished jobs
+  JobSize: integer                 ! Number of jobs to be executed
+  Msg: Event                       ! Messages sent by models
+end-declarations
+
+forall(m in RM) do
+  load(modPar(m), "SantasSledges_Subsolve.bim")  ! Load the bim file
+  modPar(m).uid:= m                ! Store the model ID
+end-do 
+
+JobList:= sum(i in JOBS) [i]       ! Define the list of jobs (instances)
+JobSize:=JobList.size              ! Store the number of jobs
+JobsRun:={}                        ! Set of terminated jobs is empty
+
+!*************************************************************************
+ procedure start_next_job(submod: Model)
+   i:=getfirst(JobList)               ! Retrieve first job in the list
+   cuthead(JobList,1)                 ! Remove first entry from job list
+   jobid(submod.uid):= i              ! Save job index for this model
+   writeln("Start job ", i, " (model ", submod.uid, ")")
+   run(submod, "FILE=gift_cluster_"+i+".dat, TIME="+SUBTIME)
+ end-procedure
+
+!**** Start initial lot of model runs ****
+ forall(m in RM) 
+   if JobList<>[] then
+     start_next_job(modPar(m))
+   end-if
+
+!**** Run all remaining jobs ****
+ while (JobsRun.size<JobSize) do
+   wait                               ! Wait for model termination
+ ! Start next job
+   Msg:= getnextevent
+   if Msg.class=EVENT_END then        ! We are only interested in "end" events
+     m:= Msg.fromuid                  ! Retrieve the model ID
+     JobsRun+={jobid(m)}              ! Keep track of job termination
+     writeln("End of job ", jobid(m), " (model ", m, ")")
+     if JobList<>[] then              ! Start a new run if queue not empty
+      start_next_job(modPar(m))
+     end-if
+   end-if
+ end-do 
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Collect the results to a single submission file
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+! Data structures to hold collected up data from the solution files
+declarations 
+  Allsledges: set of string  
+  AllGifts:array(Allsledges) of list of integer
+  
+  ! As the subproblmems will not be solved to optimality, some positions may be visited multiple times
+  ! keep track and skip multiplicity
+  giftseen : array(set of integer) of integer
+end-declarations
+
+! Collect data from a single file
+procedure add_sol_file(file : string) 
+ writeln("Adding ", file)
+  declarations 
+    ids : set of integer
+    file_sledges:array(ids) of integer
+    file_gifts:  array(ids) of integer
+  end-declarations 
+ initializations from "mmsheet.csv:"+file
+  [file_sledges, file_gifts] as "skiph;[A:C]"
+ end-initializations 
+ forall (i in ids) do
+    if (giftseen(file_gifts(i)) <> 1) then
+      giftseen(file_gifts(i))   := 1
+      AllGifts(file+"::"+file_sledges(i)) += [file_gifts(i)]
+    end-if
+ end-do
+end-procedure
+
+! Merge data in the individual files to a single one
+forall(i in JOBS)  do
+  add_sol_file("submgift_cluster_"+i+".dat")
+end-do
+
+! create submission file
+fopen("simple_clusters_100k.csv", F_OUTPUT)
+writeln("GiftId,TripId")
+TripId := 0
+forall (s in Allsledges) do 
+  TripId := TripId + 1
+  forall (g in AllGifts(s)) do
+   writeln(g,",",TripId)
+  end-do
+end-do
+fclose(F_OUTPUT)
+
+writeln("Done.")
+
+end-model
+
+
+
+
+
