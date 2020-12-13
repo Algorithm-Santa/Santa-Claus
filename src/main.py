@@ -33,7 +33,9 @@ class Simulated_Anealing:
         a = self.a 
         #// Pick an initial temperature to allow "mobility" 
         T = self.T  #selectInitialTemperature()
-        
+        print("ITERATION_COUNT: ",ITERATION_COUNT)
+        print("alpha : ",a)
+        print("Temperature :",T)
         #// Start with any tour, e.g., in input order 
         s = list(tour['Subtour'])[0] #0,1,...,n-1
         
