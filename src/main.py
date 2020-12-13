@@ -291,9 +291,9 @@ if __name__ == "__main__":
         "Iterations":[10,100,1000,10000,100000,1000000]
     }
     sa = Simulated_Anealing()
-    for T in searchGrid['T']:
-        for alpha in searchGrid['alpha']:
-            for iterations in searchGrid['Iterations']:
+    for iterations in searchGrid['Iterations']:
+        for T in searchGrid['T']:
+            for alpha in searchGrid['alpha']:
                 tours = pd.read_csv("../data/tours.csv")
                 graph = Graph(tours,tourId_provided = True)  
                 sa.T = T
