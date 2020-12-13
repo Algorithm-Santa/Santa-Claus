@@ -19,15 +19,20 @@ from math import radians
 weight_limit = 1000
 class Simulated_Anealing:
     def __init__(self):
-        pass
+        self.ITERATION_COUNT = 2
+        self.DECREASE_STEP = 0.0001
+        self.a = 0.95
+        #// Pick an initial temperature to allow "mobility" 
+        self.T = 125 #selectInitialTemperature()
+    
     def simulated_annealing(self,tour):
         tour = tour.reset_index(inplace=False)
         #print("Tour Length: ", len(tour))
-        ITERATION_COUNT = 2
-        DECREASE_STEP = 0.0001
-        a = 0.95
+        ITERATION_COUNT = self.ITERATION_COUNT 
+        DECREASE_STEP = self.DECREASE_STEP
+        a = self.a 
         #// Pick an initial temperature to allow "mobility" 
-        T = 125 #selectInitialTemperature()
+        T = self.T  #selectInitialTemperature()
         
         #// Start with any tour, e.g., in input order 
         s = list(tour['Subtour'])[0] #0,1,...,n-1
@@ -158,8 +163,8 @@ class Graph:
         gifts_copy['TripId'] = tripIds
         return gifts_copy
     
-    def optimize_subtours(self):
-        simulated_annealing_alg = Simulated_Anealing()
+    def optimize_subtours(self,optimizer):
+        simulated_annealing_alg = optimizer
         trips = self.tourgraph
         optimized_trips = trips.copy()
         grouped_trips = trips.groupby('TripId')
@@ -285,13 +290,16 @@ if __name__ == "__main__":
         "alpha":[0.9,0.95,0.98,0.99],
         "Iterations":[10,100,1000,10000,100000,1000000]
     }
-
+    sa = Simulated_Anealing()
     for T in searchGrid['T']:
         for alpha in searchGrid['alpha']:
             for iterations in searchGrid['Iterations']:
                 tours = pd.read_csv("../data/tours.csv")
                 graph = Graph(tours,tourId_provided = True)  
-                optimized_df, total_weariness,fig = graph.optimize_subtours()
+                sa.T = T
+                sa.a = alpha
+                sa.ITERATION_COUNT = iterations
+                optimized_df, total_weariness,fig = graph.optimize_subtours(sa)
                 print("total_weariness :" ,total_weariness)
                 TEMPERATURE = str(T)
                 ALPHA = str(alpha)
