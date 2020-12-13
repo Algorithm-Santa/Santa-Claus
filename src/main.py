@@ -33,9 +33,7 @@ class Simulated_Anealing:
         a = self.a 
         #// Pick an initial temperature to allow "mobility" 
         T = self.T  #selectInitialTemperature()
-        print("ITERATION_COUNT: ",ITERATION_COUNT)
-        print("alpha : ",a)
-        print("Temperature :",T)
+
         #// Start with any tour, e.g., in input order 
         s = list(tour['Subtour'])[0] #0,1,...,n-1
         
@@ -301,6 +299,9 @@ if __name__ == "__main__":
                 sa.T = T
                 sa.a = alpha
                 sa.ITERATION_COUNT = iterations
+                print("ITERATION_COUNT: ",sa.ITERATION_COUNT)
+                print("alpha : ",sa.a)
+                print("Temperature :",sa.T)
                 optimized_df, total_weariness,fig = graph.optimize_subtours(sa)
                 print("total_weariness :" ,total_weariness)
                 TEMPERATURE = str(T)
