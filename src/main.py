@@ -286,9 +286,9 @@ if __name__ == "__main__":
     df = pd.read_csv('../data/gifts.csv')
     solutions=pd.read_csv('../data/solutions.csv')
     searchGrid = {
-        "T": [10,100,1000,10000,1000000],
-        "alpha":[0.9,0.95,0.98,0.99],
-        "Iterations":[10,100,1000,10000,100000,1000000]
+        "T": [10],
+        "alpha":[0.99],
+        "Iterations":[2000,10000,100000,1000000]
     }
     sa = Simulated_Anealing()
     for iterations in searchGrid['Iterations']:
